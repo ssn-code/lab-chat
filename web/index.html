@@ -1,4 +1,495 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lab Chat</title><link rel="stylesheet" href="/style.css"></head>
-<body><main class="app"><header><div><p class="eyebrow">COLLEGE COMPUTER LAB</p><h1>LAB CHAT</h1></div><div class="online">● <strong id="user-count">0</strong> users online</div></header><section id="messages" class="messages" aria-live="polite"></section><form id="message-form" class="composer"><input id="message" maxlength="500" autocomplete="off" placeholder="Type a message..." disabled><button id="send" disabled>SEND</button></form><p id="status" class="status"></p></main>
-<dialog id="name-dialog"><form id="join-form"><p class="eyebrow">WELCOME TO</p><h2>LAB CHAT</h2><p>Choose a name to join this lab session.</p><label for="username">Your name</label><input id="username" maxlength="20" autocomplete="nickname" required autofocus placeholder="e.g. SSN"><p id="join-error" class="error"></p><button>JOIN CHAT</button></form></dialog><script src="/app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Chat — LAN Communication</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-theme="dark">
+  <div class="app-layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-logo">LC</div>
+          <div>
+            <h2>LAB CHAT</h2>
+            <p class="subtext">LAN Computer Lab</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="sidebar-actions">
+        <button id="btn-search" class="action-btn" title="Search Messages (Ctrl+K)">
+          <span>🔍</span> Search <kbd>Ctrl+K</kbd>
+        </button>
+        <button id="btn-bookmarks" class="action-btn" title="Bookmarked Messages">
+          <span>⭐</span> Bookmarks
+        </button>
+      </div>
+
+      <!-- Channels / Rooms Section -->
+      <div class="nav-section">
+        <div class="section-title">
+          <span>ROOMS</span>
+          <button id="btn-create-room" class="icon-btn" title="Create Room">+</button>
+        </div>
+        <ul class="nav-list" id="room-list">
+          <!-- Room items inserted dynamically -->
+        </ul>
+      </div>
+
+      <!-- Direct Messages Section -->
+      <div class="nav-section">
+        <div class="section-title">
+          <span>DIRECT MESSAGES</span>
+        </div>
+        <ul class="nav-list" id="dm-list">
+          <!-- DMs inserted dynamically -->
+        </ul>
+      </div>
+
+      <!-- User Profile & Status Bar -->
+      <div class="user-footer">
+        <div class="user-card" id="user-profile-trigger">
+          <div class="avatar" id="my-avatar">--</div>
+          <div class="user-meta">
+            <span class="user-name" id="my-name">Not Joined</span>
+            <span class="user-status-text" id="my-presence-text">Offline</span>
+          </div>
+          <div class="status-dot" id="my-status-dot"></div>
+        </div>
+        <div class="footer-buttons">
+          <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
+          <button id="btn-admin" class="icon-btn" title="Admin Panel">🛡️</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CHAT AREA -->
+    <main class="chat-area">
+      <!-- Chat Header -->
+      <header class="chat-header">
+        <div class="chat-title-group">
+          <button id="btn-sidebar-toggle" class="sidebar-toggle" aria-label="Toggle Sidebar">☰</button>
+          <div>
+            <h1 id="current-channel-title">#general</h1>
+            <p id="channel-desc" class="channel-desc">Computer Lab Public Chat</p>
+          </div>
+        </div>
+        
+        <div class="header-controls">
+          <div class="connection-badge" id="conn-badge" title="Connection status">
+            <span class="dot green"></span> Connected
+          </div>
+          <button id="btn-pinned" class="header-btn" title="Pinned Messages">📌 Pinned (<span id="pinned-count">0</span>)</button>
+          <button id="btn-polls" class="header-btn" title="Active Polls">📊 Polls</button>
+          <button id="btn-users-toggle" class="header-btn" title="Toggle Users Panel">👥 <span id="online-counter">0</span></button>
+        </div>
+      </header>
+
+      <!-- Announcement Banner (Dynamic) -->
+      <div id="announcement-banner" class="announcement-banner hidden">
+        <div class="announcement-content">
+          <span class="announcement-icon">📢</span>
+          <div id="announcement-text" class="announcement-text"></div>
+        </div>
+        <button id="btn-dismiss-announcement" class="icon-btn close-announcement" title="Dismiss">✕</button>
+      </div>
+
+      <!-- Pinned Bar (if messages pinned) -->
+      <div id="pinned-bar" class="pinned-bar hidden">
+        <span class="pinned-icon">📌</span>
+        <span id="pinned-summary" class="pinned-summary">Pinned Message</span>
+        <button id="btn-view-pinned" class="link-btn">View All</button>
+      </div>
+
+      <!-- Message Container -->
+      <section id="messages-container" class="messages-container" aria-live="polite">
+        <!-- Message list populated here -->
+      </section>
+
+      <!-- Typing Indicator -->
+      <div id="typing-indicator" class="typing-indicator hidden">
+        <span class="dots"><span></span><span></span><span></span></span>
+        <span id="typing-text">Someone is typing...</span>
+      </div>
+
+      <!-- Reply Quote Bar (shown when replying) -->
+      <div id="reply-bar" class="reply-bar hidden">
+        <div class="reply-details">
+          <span class="reply-label">Replying to <strong id="reply-to-user">User</strong>:</span>
+          <span id="reply-to-text" class="reply-snippet">Snippet</span>
+        </div>
+        <button id="btn-cancel-reply" class="icon-btn" title="Cancel Reply">✕</button>
+      </div>
+
+      <!-- Attachment Preview Bar -->
+      <div id="attachment-bar" class="attachment-bar hidden">
+        <span id="attachment-name" class="attachment-name">file.zip</span>
+        <span id="attachment-size" class="attachment-size">1.2 MB</span>
+        <button id="btn-cancel-attachment" class="icon-btn" title="Remove attachment">✕</button>
+      </div>
+
+      <!-- Code Snippet Composer Bar -->
+      <div id="code-snippet-bar" class="code-snippet-bar hidden">
+        <div class="code-bar-header">
+          <span>Code Snippet Mode</span>
+          <select id="code-language-select">
+            <option value="text">Plain Text</option>
+            <option value="java">Java</option>
+            <option value="python">Python</option>
+            <option value="c">C / C++</option>
+            <option value="javascript">JavaScript</option>
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="sql">SQL</option>
+            <option value="bash">Bash / Shell</option>
+            <option value="json">JSON</option>
+          </select>
+          <button id="btn-cancel-code" class="icon-btn">✕</button>
+        </div>
+      </div>
+
+      <!-- Input Message Composer -->
+      <footer class="composer-container">
+        <form id="message-form" class="composer-form">
+          <button type="button" id="btn-attach" class="tool-btn" title="Upload File or Image">📎</button>
+          <input type="file" id="file-input" style="display:none">
+          <button type="button" id="btn-code" class="tool-btn" title="Send Code Snippet">💻</button>
+          <button type="button" id="btn-emoji" class="tool-btn" title="Emoji Picker">😊</button>
+
+          <textarea id="message-input" rows="1" placeholder="Type a message or press Shift+Enter for new line..." maxlength="2000" disabled></textarea>
+
+          <button type="submit" id="btn-send" class="send-btn" disabled title="Send (Enter)">
+            <span>SEND</span>
+          </button>
+        </form>
+      </footer>
+    </main>
+
+    <!-- USERS ONLINE SIDEBAR -->
+    <aside class="users-sidebar" id="users-sidebar">
+      <div class="users-sidebar-header">
+        <h3>ACTIVE USERS</h3>
+        <span id="users-badge" class="count-badge">0</span>
+      </div>
+      <div class="user-group">
+        <h4 class="group-title">ONLINE</h4>
+        <ul id="online-users-list" class="user-items-list"></ul>
+      </div>
+      <div class="user-group">
+        <h4 class="group-title">AWAY / IDLE</h4>
+        <ul id="idle-users-list" class="user-items-list"></ul>
+      </div>
+      <div class="user-group">
+        <h4 class="group-title">OFFLINE</h4>
+        <ul id="offline-users-list" class="user-items-list"></ul>
+      </div>
+    </aside>
+  </div>
+
+  <!-- FLOATING EMOJI PICKER -->
+  <div id="emoji-popup" class="popup emoji-popup hidden">
+    <div class="emoji-grid" id="emoji-grid">
+      <!-- Standard curated emojis -->
+      <span>👍</span><span>❤️</span><span>😂</span><span>😮</span><span>😢</span><span>🔥</span>
+      <span>🎉</span><span>🚀</span><span>👏</span><span>💯</span><span>💻</span><span>💡</span>
+      <span>✅</span><span>❌</span><span>❓</span><span>⚡</span><span>🤝</span><span>☕</span>
+    </div>
+  </div>
+
+  <!-- JOIN / WELCOME DIALOG -->
+  <dialog id="join-dialog" class="modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="brand-logo big">LC</div>
+        <h2>Welcome to Lab Chat</h2>
+        <p class="subtext">Zero-dependency LAN communication for college computer labs.</p>
+      </div>
+      <form id="join-form" class="modal-body">
+        <div class="form-group">
+          <label for="username-input">Enter Your Name or Roll Number</label>
+          <input type="text" id="username-input" maxlength="20" placeholder="e.g. Arun, SSN_42" autocomplete="nickname" required autofocus>
+          <small class="helper-text">Max 20 alphanumeric characters, hyphens, and underscores.</small>
+        </div>
+        <p id="join-error" class="error-msg hidden"></p>
+        <div class="modal-actions">
+          <button type="button" id="btn-guest-join" class="secondary-btn">Join as Guest</button>
+          <button type="submit" class="primary-btn">Join Lab Chat</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- CREATE ROOM DIALOG -->
+  <dialog id="create-room-dialog" class="modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Create New Chat Room</h3>
+      </div>
+      <form id="create-room-form" class="modal-body">
+        <div class="form-group">
+          <label for="room-name-input">Room Name</label>
+          <div class="input-prefix-wrapper">
+            <span class="prefix">#</span>
+            <input type="text" id="room-name-input" maxlength="30" placeholder="lab-assignment-2" required>
+          </div>
+          <small class="helper-text">Use lowercase letters, numbers, and hyphens.</small>
+        </div>
+        <p id="room-error" class="error-msg hidden"></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn close-modal">Cancel</button>
+          <button type="submit" class="primary-btn">Create Room</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- SEARCH MODAL (Ctrl+K or /search) -->
+  <dialog id="search-dialog" class="modal search-modal">
+    <div class="modal-box wide">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Search loaded messages, code, or users... (Esc to close)">
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="search-results" id="search-results">
+        <p class="search-empty">Type to search messages in the current conversation.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- BOOKMARKS MODAL -->
+  <dialog id="bookmarks-dialog" class="modal">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3>⭐ Saved Bookmarks</h3>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body bookmarks-list" id="bookmarks-list">
+        <p class="empty-state">No saved messages yet. Hover any message and click ⭐ to save it.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- PINNED MESSAGES MODAL -->
+  <dialog id="pinned-dialog" class="modal">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3>📌 Pinned Messages</h3>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body pinned-list" id="pinned-list">
+        <p class="empty-state">No pinned messages in this room.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- POLLS MODAL -->
+  <dialog id="polls-dialog" class="modal">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3>📊 Lab Polls</h3>
+        <button id="btn-open-create-poll" class="primary-btn sm">+ New Poll</button>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body" id="polls-list-container">
+        <!-- Active polls listed here -->
+      </div>
+    </div>
+  </dialog>
+
+  <!-- CREATE POLL MODAL -->
+  <dialog id="create-poll-dialog" class="modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Create a Quick Poll</h3>
+      </div>
+      <form id="create-poll-form" class="modal-body">
+        <div class="form-group">
+          <label>Question</label>
+          <input type="text" id="poll-question" placeholder="e.g. Which lab task are you currently on?" required>
+        </div>
+        <div class="form-group">
+          <label>Options</label>
+          <input type="text" class="poll-option-input" placeholder="Option 1" required>
+          <input type="text" class="poll-option-input" placeholder="Option 2" required>
+          <input type="text" class="poll-option-input" placeholder="Option 3 (optional)">
+          <input type="text" class="poll-option-input" placeholder="Option 4 (optional)">
+        </div>
+        <p id="poll-error" class="error-msg hidden"></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn close-modal">Cancel</button>
+          <button type="submit" class="primary-btn">Start Poll</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- SETTINGS MODAL -->
+  <dialog id="settings-dialog" class="modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>⚙️ Settings & Preferences</h3>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body settings-grid">
+        <div class="setting-item">
+          <div>
+            <strong>Theme</strong>
+            <p class="subtext">Select interface appearance</p>
+          </div>
+          <select id="setting-theme">
+            <option value="dark">Dark Mode</option>
+            <option value="light">Light Mode</option>
+            <option value="system">System Default</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div>
+            <strong>Message Density</strong>
+            <p class="subtext">Comfortable or compact view</p>
+          </div>
+          <select id="setting-density">
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div>
+            <strong>Audio Chime</strong>
+            <p class="subtext">Synthesized chime on incoming messages</p>
+          </div>
+          <input type="checkbox" id="setting-sound" checked>
+        </div>
+        <div class="setting-item">
+          <div>
+            <strong>Desktop Notifications</strong>
+            <p class="subtext">Request browser Web Notification</p>
+          </div>
+          <button type="button" id="btn-enable-notifications" class="secondary-btn sm">Enable</button>
+        </div>
+        <div class="setting-item">
+          <div>
+            <strong>Send with Enter</strong>
+            <p class="subtext">Press Shift+Enter for new lines</p>
+          </div>
+          <input type="checkbox" id="setting-enter-send" checked>
+        </div>
+        <div class="setting-item">
+          <div>
+            <strong>Keyboard Shortcuts</strong>
+            <p class="subtext">View all supported keybindings</p>
+          </div>
+          <button type="button" id="btn-show-shortcuts" class="secondary-btn sm">View Keys</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- SHORTCUTS MODAL -->
+  <dialog id="shortcuts-dialog" class="modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>⌨️ Keyboard Shortcuts</h3>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body shortcuts-list">
+        <div class="shortcut-row"><kbd>Enter</kbd><span>Send message</span></div>
+        <div class="shortcut-row"><kbd>Shift + Enter</kbd><span>Insert newline in message</span></div>
+        <div class="shortcut-row"><kbd>Ctrl + K</kbd><span>Open message search</span></div>
+        <div class="shortcut-row"><kbd>Esc</kbd><span>Close open modal / cancel reply</span></div>
+        <div class="shortcut-row"><kbd>/search &lt;query&gt;</kbd><span>Command to search messages</span></div>
+        <div class="shortcut-row"><kbd>/code</kbd><span>Toggle code snippet composer</span></div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ADMIN & SERVER STATUS MODAL -->
+  <dialog id="admin-dialog" class="modal">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h3>🛡️ Server Status & Administration</h3>
+        <button type="button" class="close-btn close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Server Diagnostics Card -->
+        <div class="admin-card">
+          <h4>SERVER STATUS</h4>
+          <div class="status-grid" id="server-status-grid">
+            <div class="stat-box"><span class="stat-label">Host</span><span id="stat-host" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Port</span><span id="stat-port" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Uptime</span><span id="stat-uptime" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Active Users</span><span id="stat-users" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Rooms</span><span id="stat-rooms" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Messages</span><span id="stat-messages" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">Uploaded Files</span><span id="stat-files" class="stat-val">-</span></div>
+            <div class="stat-box"><span class="stat-label">JVM Memory</span><span id="stat-memory" class="stat-val">-</span></div>
+          </div>
+        </div>
+
+        <!-- Admin Authentication Section -->
+        <div class="admin-auth-section" id="admin-auth-section">
+          <div class="form-group inline">
+            <input type="password" id="admin-token-input" placeholder="Enter server admin token">
+            <button id="btn-admin-login" class="primary-btn">Unlock Admin Tools</button>
+          </div>
+          <p id="admin-auth-error" class="error-msg hidden"></p>
+        </div>
+
+        <!-- Admin Tools (Hidden until token validated) -->
+        <div id="admin-tools-panel" class="admin-tools-panel hidden">
+          <!-- Announcement Broadcast -->
+          <div class="admin-card">
+            <h4>📢 BROADCAST LAB ANNOUNCEMENT</h4>
+            <div class="form-group">
+              <textarea id="admin-announcement-input" placeholder="Type an urgent lab-wide announcement (e.g. Lab submission deadline is 4:30 PM)..." rows="2"></textarea>
+              <div class="admin-row-actions">
+                <button id="btn-post-announcement" class="primary-btn sm">Broadcast</button>
+                <button id="btn-clear-announcement" class="secondary-btn sm">Clear Banner</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Moderation Controls -->
+          <div class="admin-card">
+            <h4>MODERATION CONTROLS</h4>
+            <div class="mod-controls-grid">
+              <div class="form-group">
+                <label>Target User</label>
+                <input type="text" id="admin-target-user" placeholder="Username">
+              </div>
+              <div class="mod-buttons">
+                <button id="btn-admin-kick" class="danger-btn sm">Kick</button>
+                <button id="btn-admin-mute" class="warning-btn sm">Mute</button>
+                <button id="btn-admin-unmute" class="secondary-btn sm">Unmute</button>
+                <button id="btn-admin-ban" class="danger-btn sm">Ban (15m)</button>
+              </div>
+            </div>
+            <div class="room-mod-row">
+              <button id="btn-admin-clear-room" class="danger-btn sm">Clear Current Room History</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- IMAGE LIGHTBOX / PREVIEW MODAL -->
+  <dialog id="image-modal" class="modal image-lightbox">
+    <div class="lightbox-content">
+      <img id="lightbox-img" src="" alt="Full view">
+      <div class="lightbox-footer">
+        <a id="lightbox-download" href="#" download class="primary-btn sm">Download Original</a>
+        <button class="secondary-btn sm close-modal">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- AUDIO CONTEXT CHIME GENERATOR -->
+  <script src="/app.js"></script>
+</body>
+</html>
